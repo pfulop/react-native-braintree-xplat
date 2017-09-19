@@ -3,16 +3,19 @@ package com.pw.droplet.braintree;
 import java.util.Map;
 import java.util.HashMap;
 
+import com.braintreepayments.api.dropin.DropInActivity;
+import com.braintreepayments.api.dropin.DropInRequest;
+import com.braintreepayments.api.dropin.DropInResult;
 import com.braintreepayments.api.interfaces.BraintreeCancelListener;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableMap;
 import com.google.gson.Gson;
 
 import android.content.Intent;
 import android.content.Context;
 import android.app.Activity;
 
-import com.braintreepayments.api.PaymentRequest;
 import com.braintreepayments.api.models.PaymentMethodNonce;
-import com.braintreepayments.api.BraintreePaymentActivity;
 import com.braintreepayments.api.BraintreeFragment;
 import com.braintreepayments.api.exceptions.InvalidArgumentException;
 import com.braintreepayments.api.exceptions.BraintreeError;
@@ -146,34 +149,7 @@ public class Braintree extends ReactContextBaseJavaModule implements ActivityEve
   public void paymentRequest(final ReadableMap options, final Callback successCallback, final Callback errorCallback) {
     this.successCallback = successCallback;
     this.errorCallback = errorCallback;
-    PaymentRequest paymentRequest = null;
-
-    String callToActionText = null;
-    String title = null;
-    String description = null;
-    String amount = null;
-
-    if (options.hasKey("callToActionText")) {
-      callToActionText = options.getString("callToActionText");
-    }
-
-    if (options.hasKey("title")) {
-      title = options.getString("title");
-    }
-
-    if (options.hasKey("description")) {
-      description = options.getString("description");
-    }
-
-    if (options.hasKey("amount")) {
-      amount = options.getString("amount");
-    }
-
-    paymentRequest = new PaymentRequest()
-      .submitButtonText(callToActionText)
-      .primaryDescription(title)
-      .secondaryDescription(description)
-      .amount(amount)
+    DropInRequest paymentRequest = new DropInRequest()
       .clientToken(this.getToken());
 
     (getCurrentActivity()).startActivityForResult(
@@ -191,26 +167,38 @@ public class Braintree extends ReactContextBaseJavaModule implements ActivityEve
 
   @Override
   public void onActivityResult(Activity activity, final int requestCode, final int resultCode, final Intent data) {
-    if (requestCode == PAYMENT_REQUEST) {
-      switch (resultCode) {
-        case Activity.RESULT_OK:
-          PaymentMethodNonce paymentMethodNonce = data.getParcelableExtra(
-            BraintreePaymentActivity.EXTRA_PAYMENT_METHOD_NONCE
-          );
-          this.successCallback.invoke(paymentMethodNonce.getNonce());
-          break;
-        case BraintreePaymentActivity.BRAINTREE_RESULT_DEVELOPER_ERROR:
-        case BraintreePaymentActivity.BRAINTREE_RESULT_SERVER_ERROR:
-        case BraintreePaymentActivity.BRAINTREE_RESULT_SERVER_UNAVAILABLE:
-          this.errorCallback.invoke(
-            data.getSerializableExtra(BraintreePaymentActivity.EXTRA_ERROR_MESSAGE)
-          );
-          break;
-        default:
-          break;
+    WritableMap errorData = Arguments.createMap();
+    try {
+      if (requestCode == PAYMENT_REQUEST) {
+        switch (resultCode) {
+          case Activity.RESULT_OK:
+            errorData = null;
+            DropInResult paymentMethodNonce = data.getParcelableExtra(
+                    DropInResult.EXTRA_DROP_IN_RESULT
+            );
+            this.successCallback.invoke(paymentMethodNonce.getPaymentMethodNonce().getNonce());
+            break;
+          case Activity.RESULT_CANCELED:
+            errorData.putString("Error","Cancel");
+            this.errorCallback.invoke(
+                   errorData
+            );
+            break;
+          default:
+            this.errorCallback.invoke(
+                    data.getSerializableExtra(DropInActivity.EXTRA_ERROR)
+            );
+            break;
+        }
       }
+    } catch (Exception e){
+      errorData.putString("Error","Huge error");
+      this.errorCallback.invoke(
+             errorData
+      );
     }
   }
 
   public void onNewIntent(Intent intent){}
+
 }
